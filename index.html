@@ -93,32 +93,40 @@
         // Last rain: earlier today if any has fallen, otherwise look back.
         let lastRainText;
         if (todaysRain.soFar > 0) {
-          lastRainText = `the last time it rained was earlier today`;
+          lastRainText = `the last time it rained was ${rainKind(todaysRain.soFar)}earlier today`;
         } else {
           let lastRain = null;
+          let lastAmount = 0;
           for (let i = pastDays - 1; i >= 0; i--) {
             if (data.daily.precipitation_sum[i] > 0) {
               lastRain = data.daily.time[i];
+              lastAmount = data.daily.precipitation_sum[i];
               break;
             }
           }
-          lastRainText = generateLastRainString(lastRain, now);
+          lastRainText = generateLastRainString(lastRain, lastAmount, now);
         }
         document.getElementById("last-rain").textContent = lastRainText;
 
         // Next rain: later today if any is coming, otherwise look ahead.
         let nextRainText;
         if (todaysRain.later > 0) {
-          nextRainText = `the next rain is ${whenToday(todaysRain.firstRainHour)}`;
+          const when = whenToday(todaysRain.firstRainHour);
+          const kind = rainKind(todaysRain.later);
+          nextRainText = kind
+            ? `the next rain will be ${kind}${when}`
+            : `the next rain is ${when}`;
         } else {
           let nextRain = null;
+          let nextAmount = 0;
           for (let i = pastDays + 1; i < pastDays + futureDays; i++) {
             if (data.daily.precipitation_sum[i] > 0) {
               nextRain = data.daily.time[i];
+              nextAmount = data.daily.precipitation_sum[i];
               break;
             }
           }
-          nextRainText = generateNextRainString(nextRain, now);
+          nextRainText = generateNextRainString(nextRain, nextAmount, now);
         }
         document.getElementById("next-rain").textContent = nextRainText;
       }
@@ -158,15 +166,40 @@
           }
         });
 
-        return { soFar: round2(soFar), later: round2(later), firstRainHour };
+        return { soFar: round3(soFar), later: round3(later), firstRainHour };
       }
 
-      function round2(x) {
-        return Math.round(x * 100) / 100;
+      // Round away floating-point noise from summing hourly values, while
+      // keeping the smallest reported amounts (0.004 inches).
+      function round3(x) {
+        return Math.round(x * 1000) / 1000;
+      }
+
+      // How much rain, by level: "rain" is 0.1 inches or more, "drizzle" is
+      // 0.01 to 0.1, and "drops" is anything less.
+      function rainLevel(amount) {
+        if (amount >= 0.1) return "rain";
+        if (amount >= 0.01) return "drizzle";
+        if (amount > 0) return "drops";
+        return "none";
+      }
+
+      // Words for the bottom row: "", "a drizzle ", or "just a few drops ".
+      function rainKind(amount) {
+        const level = rainLevel(amount);
+        if (level === "drizzle") return "a drizzle ";
+        if (level === "drops") return "just a few drops ";
+        return "";
       }
 
       function inches(amount) {
-        return `${amount} ${amount === 1 ? "inch" : "inches"}`;
+        if (amount < 0.01) return "less than 0.01 inches";
+        const rounded = Math.round(amount * 100) / 100;
+        return `${rounded} ${rounded === 1 ? "inch" : "inches"}`;
+      }
+
+      function capitalize(text) {
+        return text.charAt(0).toUpperCase() + text.slice(1);
       }
 
       // When, later today, the rain starts.
@@ -223,7 +256,7 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
       }
 
-      function generateLastRainString(lastRainDate, now) {
+      function generateLastRainString(lastRainDate, amount, now) {
         if (lastRainDate == null) {
           return `the last rain was over ${pastDays} days ago!`;
         }
@@ -238,12 +271,12 @@
         );
 
         if (daysAgo == 1) {
-          return `the last time it rained was yesterday`;
+          return `the last time it rained was ${rainKind(amount)}yesterday`;
         }
-        return `the last time it rained was ${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
+        return `the last time it rained was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
-      function generateNextRainString(nextRainDate, now) {
+      function generateNextRainString(nextRainDate, amount, now) {
         if (nextRainDate == null) {
           return `next rain is over ${futureDays} days away!`;
         }
@@ -258,37 +291,61 @@
         );
 
         if (daysAhead == 1) {
-          return `the next rain will be tomorrow`;
+          return `the next rain will be ${rainKind(amount)}tomorrow`;
         }
-        return `the next rain will be in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
+        return `the next rain will be ${rainKind(amount)}in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
       }
 
       function generateIsPonyWetStrings(yesterday, todaysRain, hour) {
         // Return a 4-string array:
-        // Did she get wet (yesterday or today so far)? yes/no
+        // Did she get wet (yesterday or today so far)? And how much?
         // How much rain fell?
         // What happens for the rest of today?
         // How much more rain is coming today?
         const strings = new Array(4).fill("");
         const { soFar, later, firstRainHour } = todaysRain;
         const evening = hour >= 17;
-        const wet = yesterday > 0 || soFar > 0;
+        const wetLevel = rainLevel(round3(yesterday + soFar));
+        const laterLevel = rainLevel(later);
         const todayLabel = later > 0 ? "so far today" : "today";
+        const when = whenToday(firstRainHour);
 
-        if (wet) {
-          strings[0] = "Yep!";
-
+        if (wetLevel !== "none") {
+          // How much fell, e.g. "0.42 inches yesterday and 0.1 inches today"
+          let amounts;
           if (yesterday > 0 && soFar > 0) {
-            strings[1] = `${inches(yesterday)} yesterday and ${inches(soFar)} ${todayLabel}!`;
+            amounts = `${inches(yesterday)} yesterday and ${inches(soFar)} ${todayLabel}`;
           } else if (yesterday > 0) {
-            strings[1] = `${inches(yesterday)} of rain yesterday!`;
+            amounts = `${inches(yesterday)} yesterday`;
           } else {
-            strings[1] = `${inches(soFar)} of rain ${todayLabel}!`;
+            amounts = `${inches(soFar)} ${todayLabel}`;
           }
 
-          if (later > 0) {
+          if (wetLevel === "rain") {
+            strings[0] = "Yep!";
+            strings[1] = capitalize(
+              yesterday > 0 && soFar > 0
+                ? `${amounts}!`
+                : amounts.replace(/ (yesterday|so far today|today)$/, " of rain $1") + "!",
+            );
+          } else if (wetLevel === "drizzle") {
+            strings[0] = "A little!";
+            strings[1] = amounts.startsWith("less")
+              ? `${capitalize(amounts)}.`
+              : `Just ${amounts}.`;
+          } else {
+            strings[0] = "Barely!";
+            strings[1] = `${capitalize(amounts)}.`;
+          }
+
+          if (laterLevel === "rain") {
             strings[2] = `And it's not over:`;
-            strings[3] = `${inches(later)} more ${whenToday(firstRainHour)}!`;
+            strings[3] = `${inches(later)} more ${when}!`;
+          } else if (laterLevel === "drizzle") {
+            strings[2] = `And a little more is coming:`;
+            strings[3] = `${inches(later)} ${when}.`;
+          } else if (laterLevel === "drops") {
+            strings[2] = `And maybe a few more drops ${when}.`;
           } else if (soFar > 0) {
             strings[2] = evening
               ? `The rain is done for today.`
@@ -298,10 +355,17 @@
               ? `But she stayed dry today!`
               : `But she will dry out today!`;
           }
-        } else if (later > 0) {
+        } else if (laterLevel !== "none") {
           strings[0] = "Not yet!";
-          strings[2] = `But she will soon:`;
-          strings[3] = `${inches(later)} of rain ${whenToday(firstRainHour)}!`;
+          if (laterLevel === "rain") {
+            strings[2] = `But she will soon:`;
+            strings[3] = `${inches(later)} of rain ${when}!`;
+          } else if (laterLevel === "drizzle") {
+            strings[2] = `But she might get a little damp:`;
+            strings[3] = `${inches(later)} ${when}.`;
+          } else {
+            strings[2] = `But she might feel a few drops ${when}.`;
+          }
         } else {
           strings[0] = "Nope!";
           strings[2] = evening
