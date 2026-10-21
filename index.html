@@ -55,34 +55,46 @@
       const pastDays = 7;
       const futureDays = 16;
 
-      fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
-      )
-        .then((response) => response.json())
-        .then((data) => {
-          console.log(data);
-          document.getElementById("answer-group").style.display = "block";
-          document.getElementById("button").style.display = "inline";
-          document.getElementById("error-group").style.display = "none";
+      loadWeather();
 
-          // Calculate yesterday & today based on the passed in date range
-          const yesterdaysPrecipitation =
-            data.daily.precipitation_sum[pastDays - 1];
-          const todaysPrecipitation = data.daily.precipitation_sum[pastDays];
+      function loadWeather() {
+        fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
+        )
+          .then((response) => response.json())
+          .then((data) => {
+            console.log(data);
+            render(data, new Date());
+          })
+          .catch(showError);
+      }
 
-          let strings = generateIsPonyWetStrings(
-            todaysPrecipitation,
-            yesterdaysPrecipitation,
-          );
+      function render(data, now) {
+        document.getElementById("answer-group").style.display = "block";
+        document.getElementById("button").style.display = "inline";
+        document.getElementById("error-group").style.display = "none";
 
-          document.getElementById("did-it-rain").textContent = strings[0];
-          document.getElementById("how-much").textContent = strings[1];
-          document.getElementById("rain-soon").textContent = strings[2];
-          document.getElementById("how-much-upcoming").textContent = strings[3];
+        const yesterdaysPrecipitation =
+          data.daily.precipitation_sum[pastDays - 1] || 0;
+        const today = data.daily.time[pastDays];
+        const todaysRain = splitTodaysRain(data.hourly, today, now);
 
-          // Fill in the future and past
+        const strings = generateIsPonyWetStrings(
+          yesterdaysPrecipitation,
+          todaysRain,
+          now.getHours(),
+        );
 
-          // Find last rain:
+        document.getElementById("did-it-rain").textContent = strings[0];
+        document.getElementById("how-much").textContent = strings[1];
+        document.getElementById("rain-soon").textContent = strings[2];
+        document.getElementById("how-much-upcoming").textContent = strings[3];
+
+        // Last rain: earlier today if any has fallen, otherwise look back.
+        let lastRainText;
+        if (todaysRain.soFar > 0) {
+          lastRainText = `the last time it rained was earlier today`;
+        } else {
           let lastRain = null;
           for (let i = pastDays - 1; i >= 0; i--) {
             if (data.daily.precipitation_sum[i] > 0) {
@@ -90,10 +102,15 @@
               break;
             }
           }
-          document.getElementById("last-rain").textContent =
-            generateLastRainString(lastRain);
+          lastRainText = generateLastRainString(lastRain, now);
+        }
+        document.getElementById("last-rain").textContent = lastRainText;
 
-          // Find next rain:
+        // Next rain: later today if any is coming, otherwise look ahead.
+        let nextRainText;
+        if (todaysRain.later > 0) {
+          nextRainText = `the next rain is ${whenToday(todaysRain.firstRainHour)}`;
+        } else {
           let nextRain = null;
           for (let i = pastDays + 1; i < pastDays + futureDays; i++) {
             if (data.daily.precipitation_sum[i] > 0) {
@@ -101,33 +118,70 @@
               break;
             }
           }
-          document.getElementById("next-rain").textContent =
-            generateNextRainString(nextRain);
-        })
-        .catch((error) => {
-          console.error("Error fetching data:", error);
+          nextRainText = generateNextRainString(nextRain, now);
+        }
+        document.getElementById("next-rain").textContent = nextRainText;
+      }
 
-          document.getElementById("answer-group").style.display = "none";
-          document.getElementById("error-group").style.display = "block";
-          document.getElementById("button").style.display = "inline";
+      function showError(error) {
+        console.error("Error fetching data:", error);
 
-          document.getElementById("error").textContent =
-            `I don't know! Something went wrong.`;
-          document.getElementById("error-details").textContent = `${error}`;
+        document.getElementById("answer-group").style.display = "none";
+        document.getElementById("error-group").style.display = "block";
+        document.getElementById("button").style.display = "inline";
+
+        document.getElementById("error").textContent =
+          `I don't know! Something went wrong.`;
+        document.getElementById("error-details").textContent = `${error}`;
+      }
+
+      // Split today's hourly rain into what has already fallen and what is
+      // still forecast. Open-Meteo stamps each hour with its end time, so the
+      // "21:00" entry is the rain that fell between 8pm and 9pm.
+      function splitTodaysRain(hourly, today, now) {
+        let soFar = 0;
+        let later = 0;
+        let firstRainHour = null;
+        const currentHour = now.getHours();
+
+        hourly.time.forEach((time, i) => {
+          if (!time.startsWith(today)) return;
+          const hourEnd = Number(time.slice(11, 13));
+          const amount = hourly.precipitation[i] || 0;
+          if (hourEnd <= currentHour) {
+            soFar += amount;
+          } else {
+            later += amount;
+            if (amount > 0 && firstRainHour === null) {
+              firstRainHour = hourEnd - 1;
+            }
+          }
         });
+
+        return { soFar: round2(soFar), later: round2(later), firstRainHour };
+      }
+
+      function round2(x) {
+        return Math.round(x * 100) / 100;
+      }
+
+      function inches(amount) {
+        return `${amount} ${amount === 1 ? "inch" : "inches"}`;
+      }
+
+      // When, later today, the rain starts.
+      function whenToday(hour) {
+        if (hour < 12) return "this morning";
+        if (hour < 17) return "this afternoon";
+        if (hour < 21) return "this evening";
+        return "tonight";
+      }
 
       function openWeatherApp() {
         window.open(
           `https://www.wunderground.com/hourly/us/ca/half-moon-bay`,
           "_self",
         );
-      }
-
-      // Parse a "YYYY-MM-DD" string as local midnight, so the day math
-      // works in both standard and daylight time.
-      function parseLocalDate(dateString) {
-        const [year, month, day] = dateString.split("-").map(Number);
-        return new Date(year, month - 1, day);
       }
 
       function getDayFromDate(date) {
@@ -158,78 +212,101 @@
         return day + suffix;
       }
 
-      function generateLastRainString(lastRainDate) {
+      // Parse a "YYYY-MM-DD" string as local midnight, so the day math
+      // works in both standard and daylight time.
+      function parseLocalDate(dateString) {
+        const [year, month, day] = dateString.split("-").map(Number);
+        return new Date(year, month - 1, day);
+      }
+
+      function startOfDay(now) {
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      }
+
+      function generateLastRainString(lastRainDate, now) {
         if (lastRainDate == null) {
           return `the last rain was over ${pastDays} days ago!`;
         }
 
         const date = parseLocalDate(lastRainDate);
-        const dayNumber = date.getDate();
-        const daySuffix = getDayWithSuffix(dayNumber);
-
+        const daySuffix = getDayWithSuffix(date.getDate());
         const lastRainDay = getDayFromDate(date);
 
         // How many days ago was the last rain day?
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const daysAgo = Math.round((today - date) / (1000 * 3600 * 24));
+        const daysAgo = Math.round(
+          (startOfDay(now) - date) / (1000 * 3600 * 24),
+        );
 
-        const daysOrDay = daysAgo == 1 ? `day` : `days`;
-
-        return `the last time it rained was ${daysAgo} ${daysOrDay} ago, on ${lastRainDay} the ${daySuffix}`;
+        if (daysAgo == 1) {
+          return `the last time it rained was yesterday`;
+        }
+        return `the last time it rained was ${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
-      function generateNextRainString(nextRainDate) {
+      function generateNextRainString(nextRainDate, now) {
         if (nextRainDate == null) {
           return `next rain is over ${futureDays} days away!`;
         }
 
         const date = parseLocalDate(nextRainDate);
-        const dayNumber = date.getDate();
-        const daySuffix = getDayWithSuffix(dayNumber);
-
+        const daySuffix = getDayWithSuffix(date.getDate());
         const nextRainDay = getDayFromDate(date);
 
         // How many days in the future is the next rain day?
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const daysAhead = Math.round((date - today) / (1000 * 3600 * 24));
+        const daysAhead = Math.round(
+          (date - startOfDay(now)) / (1000 * 3600 * 24),
+        );
 
-        const daysOrDay = daysAhead == 1 ? `day` : `days`;
-
-        return `the next rain will be in ${daysAhead} ${daysOrDay}, on ${nextRainDay} the ${daySuffix}`;
+        if (daysAhead == 1) {
+          return `the next rain will be tomorrow`;
+        }
+        return `the next rain will be in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
       }
 
-      function generateIsPonyWetStrings(
-        todaysPrecipitation,
-        yesterdaysPrecipitation,
-      ) {
-        // Return a 4-string array with the following strings:
-        // Did it rain? yes/no
-        // How much did it rain?
-        // Will it rain today?
-        // How much rain is coming up?
-        let strings = new Array(4).fill("");
+      function generateIsPonyWetStrings(yesterday, todaysRain, hour) {
+        // Return a 4-string array:
+        // Did she get wet (yesterday or today so far)? yes/no
+        // How much rain fell?
+        // What happens for the rest of today?
+        // How much more rain is coming today?
+        const strings = new Array(4).fill("");
+        const { soFar, later, firstRainHour } = todaysRain;
+        const evening = hour >= 17;
+        const wet = yesterday > 0 || soFar > 0;
+        const todayLabel = later > 0 ? "so far today" : "today";
 
-        if (yesterdaysPrecipitation > 0) {
+        if (wet) {
           strings[0] = "Yep!";
-          strings[1] = `${yesterdaysPrecipitation} inches of rain!`;
 
-          if (todaysPrecipitation) {
-            strings[2] = `And she will keep getting wet: `;
-            strings[3] = `${todaysPrecipitation} more inches today!`;
+          if (yesterday > 0 && soFar > 0) {
+            strings[1] = `${inches(yesterday)} yesterday and ${inches(soFar)} ${todayLabel}!`;
+          } else if (yesterday > 0) {
+            strings[1] = `${inches(yesterday)} of rain yesterday!`;
           } else {
-            strings[2] = `But she will dry out today!`;
+            strings[1] = `${inches(soFar)} of rain ${todayLabel}!`;
           }
+
+          if (later > 0) {
+            strings[2] = `And she's not done getting wet:`;
+            strings[3] = `${inches(later)} more ${whenToday(firstRainHour)}!`;
+          } else if (soFar > 0) {
+            strings[2] = evening
+              ? `The rain is over, so she can dry off tonight.`
+              : `But the rain is done for today.`;
+          } else {
+            strings[2] = evening
+              ? `But she stayed dry today!`
+              : `But she will dry out today!`;
+          }
+        } else if (later > 0) {
+          strings[0] = "Not yet!";
+          strings[2] = `But she will soon:`;
+          strings[3] = `${inches(later)} of rain ${whenToday(firstRainHour)}!`;
         } else {
           strings[0] = "Nope!";
-
-          if (todaysPrecipitation) {
-            strings[2] = `But she will soon: `;
-            strings[3] = `${todaysPrecipitation} inches of rain will fall on her today!`;
-          } else {
-            strings[2] = `And she will stay dry today too!`;
-          }
+          strings[2] = evening
+            ? `And she stayed dry all day!`
+            : `And she will stay dry today too!`;
         }
         return strings;
       }
