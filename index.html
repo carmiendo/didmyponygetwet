@@ -123,6 +123,13 @@
         );
       }
 
+      // Parse a "YYYY-MM-DD" string as local midnight, so the day math
+      // works in both standard and daylight time.
+      function parseLocalDate(dateString) {
+        const [year, month, day] = dateString.split("-").map(Number);
+        return new Date(year, month - 1, day);
+      }
+
       function getDayFromDate(date) {
         const daysOfWeek = [
           "Sunday",
@@ -156,7 +163,7 @@
           return `the last rain was over ${pastDays} days ago!`;
         }
 
-        const date = new Date(`${lastRainDate}T00:00:00-08:00`);
+        const date = parseLocalDate(lastRainDate);
         const dayNumber = date.getDate();
         const daySuffix = getDayWithSuffix(dayNumber);
 
@@ -165,7 +172,7 @@
         // How many days ago was the last rain day?
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const daysAgo = Math.floor((today - date) / (1000 * 3600 * 24));
+        const daysAgo = Math.round((today - date) / (1000 * 3600 * 24));
 
         const daysOrDay = daysAgo == 1 ? `day` : `days`;
 
@@ -177,7 +184,7 @@
           return `next rain is over ${futureDays} days away!`;
         }
 
-        const date = new Date(`${nextRainDate}T00:00:00-08:00`);
+        const date = parseLocalDate(nextRainDate);
         const dayNumber = date.getDate();
         const daySuffix = getDayWithSuffix(dayNumber);
 
@@ -186,7 +193,7 @@
         // How many days in the future is the next rain day?
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const daysAhead = Math.floor((date - today) / (1000 * 3600 * 24));
+        const daysAhead = Math.round((date - today) / (1000 * 3600 * 24));
 
         const daysOrDay = daysAhead == 1 ? `day` : `days`;
 
