@@ -34,6 +34,8 @@
               <p id="next-rain" class="text-left"></p>
             </div>
           </div>
+
+          <p id="current-status" class="text-3xl font-bold mt-10"></p>
         </div>
 
         <div id="error-group">
@@ -60,7 +62,7 @@
 
       function loadWeather() {
         fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
+          `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
         )
           .then((response) => response.json())
           .then((data) => {
@@ -121,6 +123,10 @@
         }
         const nextRainText = generateNextRainString(nextRain, nextAmount, now);
         document.getElementById("next-rain").textContent = nextRainText;
+
+        document.getElementById("current-status").textContent = data.current
+          ? generateCurrentStatusString(data.current)
+          : "";
       }
 
       function showError(error) {
@@ -286,6 +292,43 @@
           return `the next rain will be ${rainKind(amount)}tomorrow`;
         }
         return `the next rain will be ${rainKind(amount)}in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
+      }
+
+      // e.g. "current status: 58°F, foggy, breezy"
+      function generateCurrentStatusString(current) {
+        const temperature = `${Math.round(current.temperature_2m)}°F`;
+        const parts = [temperature];
+        const conditions = describeConditions(current.weather_code, current.is_day);
+        if (conditions) parts.push(conditions);
+        parts.push(describeWind(current.wind_speed_10m, current.wind_gusts_10m));
+        return `current status: ${parts.join(", ")}`;
+      }
+
+      // Open-Meteo weather codes (WMO), in plain words.
+      function describeConditions(code, isDay) {
+        if (code === 0) return isDay ? "sunny" : "clear";
+        if (code === 1) return isDay ? "mostly sunny" : "mostly clear";
+        if (code === 2) return "partly cloudy";
+        if (code === 3) return "cloudy";
+        if (code === 45 || code === 48) return "foggy";
+        if (code >= 51 && code <= 57) return "drizzling";
+        if (code === 65) return "pouring";
+        if (code >= 61 && code <= 67) return "raining";
+        if (code >= 71 && code <= 77) return "snowing";
+        if (code >= 80 && code <= 82) return "showers";
+        if (code === 85 || code === 86) return "snowing";
+        if (code >= 95) return "thunderstorms";
+        return "";
+      }
+
+      // Wind in words, from the steady speed in mph. Strong gusts on a day
+      // that is otherwise less than super windy read as "gusty".
+      function describeWind(speed, gusts) {
+        if (speed >= 25) return "super windy";
+        if (gusts >= 30) return "gusty";
+        if (speed >= 15) return "windy";
+        if (speed >= 5) return "breezy";
+        return "calm";
       }
 
       function generateIsPonyWetStrings(yesterday, todaysRain, hour) {
