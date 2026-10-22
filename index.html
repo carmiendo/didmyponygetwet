@@ -3,7 +3,25 @@
   <head>
     <title>Did my pony get wet?</title>
 
+    <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
     <link rel="stylesheet" href="/tailwind.css" />
+
+    <script>
+      const pastDays = 7;
+      const futureDays = 16;
+
+      // Start the weather request right away, while the rest of the page
+      // loads. Hourly data covers 24 hours either side of now, which spans
+      // all of today. The result is picked up at the end of the page.
+      const weatherRequest = fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&past_hours=24&forecast_hours=24&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
+      )
+        .then((response) => response.json())
+        .then(
+          (data) => ({ data }),
+          (error) => ({ error }),
+        );
+    </script>
 
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
@@ -55,17 +73,12 @@
     </div>
 
     <script>
-      const pastDays = 7;
-      const futureDays = 16;
-
       loadWeather();
 
       function loadWeather() {
-        fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
-        )
-          .then((response) => response.json())
-          .then((data) => {
+        weatherRequest
+          .then(({ data, error }) => {
+            if (error) throw error;
             console.log(data);
             render(data, new Date());
           })
