@@ -294,14 +294,24 @@
         return `the next rain will be ${rainKind(amount)}in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
       }
 
-      // e.g. "current status: 58°F, foggy, breezy"
+      // e.g. "current status: cool, foggy, breezy"
       function generateCurrentStatusString(current) {
-        const temperature = `${Math.round(current.temperature_2m)}°F`;
-        const parts = [temperature];
+        const parts = [describeTemperature(current.temperature_2m)];
         const conditions = describeConditions(current.weather_code, current.is_day);
         if (conditions) parts.push(conditions);
         parts.push(describeWind(current.wind_speed_10m, current.wind_gusts_10m));
         return `current status: ${parts.join(", ")}`;
+      }
+
+      // Temperature in words, from the actual temperature in °F.
+      function describeTemperature(temperature) {
+        if (temperature < 32) return "freezing";
+        if (temperature < 45) return "cold";
+        if (temperature < 55) return "chilly";
+        if (temperature < 65) return "cool";
+        if (temperature < 75) return "comfortable";
+        if (temperature < 85) return "warm";
+        return "hot";
       }
 
       // Open-Meteo weather codes (WMO), in plain words.
