@@ -91,22 +91,24 @@
         document.getElementById("rain-soon").textContent = strings[2];
         document.getElementById("how-much-upcoming").textContent = strings[3];
 
-        // Last rain: earlier today if any has fallen, otherwise look back.
-        let lastRainText;
-        if (todaysRain.soFar > 0) {
-          lastRainText = `the last time it rained was ${rainKind(todaysRain.soFar)}earlier today`;
-        } else {
-          let lastRain = null;
-          let lastAmount = 0;
-          for (let i = pastDays - 1; i >= 0; i--) {
-            if (data.daily.precipitation_sum[i] > 0) {
-              lastRain = data.daily.time[i];
-              lastAmount = data.daily.precipitation_sum[i];
-              break;
-            }
+        // Last rain: the most recent rainy day before yesterday. Rain from
+        // yesterday and today so far is already described in the top section.
+        let lastRain = null;
+        let lastAmount = 0;
+        for (let i = pastDays - 2; i >= 0; i--) {
+          if (data.daily.precipitation_sum[i] > 0) {
+            lastRain = data.daily.time[i];
+            lastAmount = data.daily.precipitation_sum[i];
+            break;
           }
-          lastRainText = generateLastRainString(lastRain, lastAmount, now);
         }
+        const wetRecently = yesterdaysPrecipitation > 0 || todaysRain.soFar > 0;
+        const lastRainText = generateLastRainString(
+          lastRain,
+          lastAmount,
+          now,
+          wetRecently,
+        );
         document.getElementById("last-rain").textContent = lastRainText;
 
         // Next rain: the first rainy day after today. Any rain still coming
@@ -249,9 +251,13 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
       }
 
-      function generateLastRainString(lastRainDate, amount, now) {
+      // When the top section already says she got wet, this line describes
+      // the rain before that, so it starts with "before that".
+      function generateLastRainString(lastRainDate, amount, now, wetRecently) {
         if (lastRainDate == null) {
-          return `the last rain was over ${pastDays} days ago!`;
+          return wetRecently
+            ? `before that, the last rain was over ${pastDays} days ago!`
+            : `the last rain was over ${pastDays} days ago!`;
         }
 
         const date = parseLocalDate(lastRainDate);
@@ -263,10 +269,10 @@
           (startOfDay(now) - date) / (1000 * 3600 * 24),
         );
 
-        if (daysAgo == 1) {
-          return `the last time it rained was ${rainKind(amount)}yesterday`;
-        }
-        return `the last time it rained was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
+        const when = `${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
+        return wetRecently
+          ? `before that, the last rain was ${rainKind(amount)}${when}`
+          : `the last time it rained was ${rainKind(amount)}${when}`;
       }
 
       function generateNextRainString(nextRainDate, amount, now) {
