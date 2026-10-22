@@ -91,24 +91,21 @@
         document.getElementById("rain-soon").textContent = strings[2];
         document.getElementById("how-much-upcoming").textContent = strings[3];
 
-        // Last rain: the most recent rainy day before yesterday. Rain from
-        // yesterday and today so far is already described in the top section.
+        // Last rain: the most recent rainy day before the one the top section
+        // describes. Once it has rained today, the top is about today, so
+        // start from yesterday; otherwise the top is about yesterday, so
+        // start from the day before.
         let lastRain = null;
         let lastAmount = 0;
-        for (let i = pastDays - 2; i >= 0; i--) {
+        const lastStart = todaysRain.soFar > 0 ? pastDays - 1 : pastDays - 2;
+        for (let i = lastStart; i >= 0; i--) {
           if (data.daily.precipitation_sum[i] > 0) {
             lastRain = data.daily.time[i];
             lastAmount = data.daily.precipitation_sum[i];
             break;
           }
         }
-        const wetRecently = yesterdaysPrecipitation > 0 || todaysRain.soFar > 0;
-        const lastRainText = generateLastRainString(
-          lastRain,
-          lastAmount,
-          now,
-          wetRecently,
-        );
+        const lastRainText = generateLastRainString(lastRain, lastAmount, now);
         document.getElementById("last-rain").textContent = lastRainText;
 
         // Next rain: the first rainy day after today. Any rain still coming
@@ -251,13 +248,9 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
       }
 
-      // When the top section already says she got wet, this line describes
-      // the rain before that, so it starts with "before that".
-      function generateLastRainString(lastRainDate, amount, now, wetRecently) {
+      function generateLastRainString(lastRainDate, amount, now) {
         if (lastRainDate == null) {
-          return wetRecently
-            ? `before that, the last rain was over ${pastDays} days ago!`
-            : `the last rain was over ${pastDays} days ago!`;
+          return `the last rain was over ${pastDays} days ago!`;
         }
 
         const date = parseLocalDate(lastRainDate);
@@ -269,10 +262,10 @@
           (startOfDay(now) - date) / (1000 * 3600 * 24),
         );
 
-        const when = `${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
-        return wetRecently
-          ? `before that, the last rain was ${rainKind(amount)}${when}`
-          : `the last time it rained was ${rainKind(amount)}${when}`;
+        if (daysAgo == 1) {
+          return `the last time it rained was ${rainKind(amount)}yesterday`;
+        }
+        return `the last time it rained was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
       function generateNextRainString(nextRainDate, amount, now) {
@@ -297,44 +290,36 @@
 
       function generateIsPonyWetStrings(yesterday, todaysRain, hour) {
         // Return a 4-string array:
-        // Did she get wet (yesterday or today so far)? And how much?
+        // Did she get wet (today so far, or else yesterday)?
         // How much rain fell?
         // What happens for the rest of today?
         // How much more rain is coming today?
         const strings = new Array(4).fill("");
         const { soFar, later, firstRainHour } = todaysRain;
         const evening = hour >= 17;
-        const wetLevel = rainLevel(round3(yesterday + soFar));
+        // Once it has rained today, the top is about today only (yesterday
+        // moves to the bottom row). Otherwise it is about yesterday.
+        const rainedToday = soFar > 0;
+        const wetAmount = rainedToday ? soFar : yesterday;
+        const wetLevel = rainLevel(wetAmount);
         const laterLevel = rainLevel(later);
-        const todayLabel = later > 0 ? "so far today" : "today";
+        const dayLabel = rainedToday
+          ? later > 0
+            ? "so far today"
+            : "today"
+          : "yesterday";
         const when = whenToday(firstRainHour);
 
         if (wetLevel !== "none") {
-          // How much fell, e.g. "0.42 inches yesterday and 0.1 inches today"
-          let amounts;
-          if (yesterday > 0 && soFar > 0) {
-            amounts = `${inches(yesterday)} yesterday and ${inches(soFar)} ${todayLabel}`;
-          } else if (yesterday > 0) {
-            amounts = `${inches(yesterday)} yesterday`;
-          } else {
-            amounts = `${inches(soFar)} ${todayLabel}`;
-          }
-
           if (wetLevel === "rain") {
             strings[0] = "Yep!";
-            strings[1] = capitalize(
-              yesterday > 0 && soFar > 0
-                ? `${amounts}!`
-                : amounts.replace(/ (yesterday|so far today|today)$/, " of rain $1") + "!",
-            );
+            strings[1] = `${inches(wetAmount)} of rain ${dayLabel}!`;
           } else if (wetLevel === "drizzle") {
             strings[0] = "A little!";
-            strings[1] = amounts.startsWith("less")
-              ? `${capitalize(amounts)}.`
-              : `Just ${amounts}.`;
+            strings[1] = `Just ${inches(wetAmount)} ${dayLabel}.`;
           } else {
             strings[0] = "Barely!";
-            strings[1] = `${capitalize(amounts)}.`;
+            strings[1] = `${capitalize(inches(wetAmount))} ${dayLabel}.`;
           }
 
           if (laterLevel === "rain") {
