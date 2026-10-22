@@ -263,9 +263,9 @@
         );
 
         if (daysAgo == 1) {
-          return `the last time it rained was ${rainKind(amount)}yesterday`;
+          return `the last rain was ${rainKind(amount)}yesterday`;
         }
-        return `the last time it rained was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
+        return `the last rain was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
       function generateNextRainString(nextRainDate, amount, now) {
