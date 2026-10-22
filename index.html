@@ -109,26 +109,18 @@
         }
         document.getElementById("last-rain").textContent = lastRainText;
 
-        // Next rain: later today if any is coming, otherwise look ahead.
-        let nextRainText;
-        if (todaysRain.later > 0) {
-          const when = whenToday(todaysRain.firstRainHour);
-          const kind = rainKind(todaysRain.later);
-          nextRainText = kind
-            ? `the next rain will be ${kind}${when}`
-            : `the next rain is ${when}`;
-        } else {
-          let nextRain = null;
-          let nextAmount = 0;
-          for (let i = pastDays + 1; i < pastDays + futureDays; i++) {
-            if (data.daily.precipitation_sum[i] > 0) {
-              nextRain = data.daily.time[i];
-              nextAmount = data.daily.precipitation_sum[i];
-              break;
-            }
+        // Next rain: the first rainy day after today. Any rain still coming
+        // today is already described in the top section.
+        let nextRain = null;
+        let nextAmount = 0;
+        for (let i = pastDays + 1; i < pastDays + futureDays; i++) {
+          if (data.daily.precipitation_sum[i] > 0) {
+            nextRain = data.daily.time[i];
+            nextAmount = data.daily.precipitation_sum[i];
+            break;
           }
-          nextRainText = generateNextRainString(nextRain, nextAmount, now);
         }
+        const nextRainText = generateNextRainString(nextRain, nextAmount, now);
         document.getElementById("next-rain").textContent = nextRainText;
       }
 
