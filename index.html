@@ -127,14 +127,21 @@
         // today is already described in the top section.
         let nextRain = null;
         let nextAmount = 0;
+        let nextChance = null;
         for (let i = pastDays + 1; i < pastDays + futureDays; i++) {
           if (data.daily.precipitation_sum[i] > 0) {
             nextRain = data.daily.time[i];
             nextAmount = data.daily.precipitation_sum[i];
+            nextChance = data.daily.precipitation_probability_max?.[i] ?? null;
             break;
           }
         }
-        const nextRainText = generateNextRainString(nextRain, nextAmount, now);
+        const nextRainText = generateNextRainString(
+          nextRain,
+          nextAmount,
+          now,
+          nextChance,
+        );
         document.getElementById("next-rain").textContent = nextRainText;
 
         document.getElementById("current-status").textContent = data.current
@@ -287,7 +294,14 @@
         return `the last rain was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
-      function generateNextRainString(nextRainDate, amount, now) {
+      // How sure the forecast is, from the day's chance of rain (0-100).
+      function chanceVerb(chance) {
+        if (chance == null || chance >= 70) return "will be";
+        if (chance >= 40) return "will probably be";
+        return "might be";
+      }
+
+      function generateNextRainString(nextRainDate, amount, now, chance) {
         if (nextRainDate == null) {
           return `next rain is over ${futureDays} days away!`;
         }
@@ -302,9 +316,9 @@
         );
 
         if (daysAhead == 1) {
-          return `the next rain will be ${rainKind(amount)}tomorrow`;
+          return `the next rain ${chanceVerb(chance)} ${rainKind(amount)}tomorrow`;
         }
-        return `the next rain will be ${rainKind(amount)}in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
+        return `the next rain ${chanceVerb(chance)} ${rainKind(amount)}in ${daysAhead} days, on ${nextRainDay} the ${daySuffix}`;
       }
 
       // e.g. "current status: cool, foggy, breezy"
