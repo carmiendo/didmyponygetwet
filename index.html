@@ -14,7 +14,7 @@
       // loads. Hourly data covers 24 hours either side of now, which spans
       // all of today. The result is picked up at the end of the page.
       const weatherRequest = fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation&past_hours=24&forecast_hours=24&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
+        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation,precipitation_probability&past_hours=24&forecast_hours=24&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
       )
         .then((response) => response.json())
         .then(
@@ -168,6 +168,7 @@
         let soFar = 0;
         let later = 0;
         let firstRainHour = null;
+        let laterChance = null;
         const currentHour = now.getHours();
 
         hourly.time.forEach((time, i) => {
@@ -181,10 +182,18 @@
             if (amount > 0 && firstRainHour === null) {
               firstRainHour = hourEnd - 1;
             }
+            // The highest chance of rain in any hour left today.
+            const chance = hourly.precipitation_probability?.[i];
+            if (chance != null) laterChance = Math.max(laterChance ?? 0, chance);
           }
         });
 
-        return { soFar: round3(soFar), later: round3(later), firstRainHour };
+        return {
+          soFar: round3(soFar),
+          later: round3(later),
+          firstRainHour,
+          laterChance,
+        };
       }
 
       // Round away floating-point noise from summing hourly values, while
@@ -294,11 +303,20 @@
         return `the last rain was ${rainKind(amount)}${daysAgo} days ago, on ${lastRainDay} the ${daySuffix}`;
       }
 
-      // How sure the forecast is, from the day's chance of rain (0-100).
+      // How sure the forecast is, from a chance of rain (0-100). With no
+      // chance given, treat the forecast as sure.
+      function chanceLevel(chance) {
+        if (chance == null || chance >= 70) return "sure";
+        if (chance >= 40) return "probably";
+        return "might";
+      }
+
       function chanceVerb(chance) {
-        if (chance == null || chance >= 70) return "will be";
-        if (chance >= 40) return "will probably be";
-        return "might be";
+        return {
+          sure: "will be",
+          probably: "will probably be",
+          might: "might be",
+        }[chanceLevel(chance)];
       }
 
       function generateNextRainString(nextRainDate, amount, now, chance) {
@@ -375,7 +393,8 @@
         // What happens for the rest of today?
         // How much more rain is coming today?
         const strings = new Array(4).fill("");
-        const { soFar, later, firstRainHour } = todaysRain;
+        const { soFar, later, firstRainHour, laterChance } = todaysRain;
+        const sureness = chanceLevel(laterChance);
         const evening = hour >= 17;
         // Once it has rained today, the top is about today only (yesterday
         // moves to the bottom row). Otherwise it is about yesterday.
@@ -403,10 +422,18 @@
           }
 
           if (laterLevel === "rain") {
-            strings[2] = `And it's not over:`;
+            strings[2] = {
+              sure: `And it's not over:`,
+              probably: `And it's probably not over:`,
+              might: `And it might not be over:`,
+            }[sureness];
             strings[3] = `${inches(later)} more ${when}!`;
           } else if (laterLevel === "drizzle") {
-            strings[2] = `And a little more is coming:`;
+            strings[2] = {
+              sure: `And a little more is coming:`,
+              probably: `And a little more is probably coming:`,
+              might: `And a little more might come:`,
+            }[sureness];
             strings[3] = `${inches(later)} ${when}.`;
           } else if (laterLevel === "drops") {
             strings[2] = `And maybe a few more drops ${when}.`;
@@ -422,10 +449,18 @@
         } else if (laterLevel !== "none") {
           strings[0] = "Not yet!";
           if (laterLevel === "rain") {
-            strings[2] = `But she will soon:`;
+            strings[2] = {
+              sure: `But she will soon:`,
+              probably: `But she probably will soon:`,
+              might: `But she might soon:`,
+            }[sureness];
             strings[3] = `${inches(later)} of rain ${when}!`;
           } else if (laterLevel === "drizzle") {
-            strings[2] = `But she might get a little damp:`;
+            strings[2] = {
+              sure: `But she will get a little damp:`,
+              probably: `But she'll probably get a little damp:`,
+              might: `But she might get a little damp:`,
+            }[sureness];
             strings[3] = `${inches(later)} ${when}.`;
           } else {
             strings[2] = `But she might feel a few drops ${when}.`;
