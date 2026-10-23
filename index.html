@@ -14,7 +14,7 @@
       // loads. Hourly data covers 24 hours either side of now, which spans
       // all of today. The result is picked up at the end of the page.
       const weatherRequest = fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_hours,precipitation_probability_max&hourly=precipitation,precipitation_probability&past_hours=24&forecast_hours=24&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
+        `https://api.open-meteo.com/v1/forecast?latitude=37.477871&longitude=-122.420851&daily=precipitation_sum,precipitation_probability_max&hourly=precipitation,precipitation_probability&past_hours=24&forecast_hours=24&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&past_days=${pastDays}&forecast_days=${futureDays}`,
       )
         .then((response) => response.json())
         .then(
@@ -29,7 +29,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="apple-mobile-web-app-title" content="Wet pony?" />
 
-    <!-- Sets the status bar color to black -->
+    <!-- Sets the browser and status bar color to cyan -->
     <meta name="theme-color" content="#06b6d4" />
   </head>
 
@@ -79,7 +79,6 @@
         weatherRequest
           .then(({ data, error }) => {
             if (error) throw error;
-            console.log(data);
             render(data, new Date());
           })
           .catch(showError);
